@@ -1,0 +1,29 @@
+{
+  "name": "discord-notifier-bot",
+  "version": "1.0.0",
+  "description": "A customizable Discord bot that sends alerts when you're live on YouTube or Twitch, and posts updates from platforms like X, Bluesky, and YouTube Community. Also greets new server members automatically.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "prepare": "husky install",
+    "start": "nodemon index.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@atproto/api": "^0.15.23",
+    "axios": "^1.10.0",
+    "discord.js": "^14.21.0",
+    "dotenv": "^17.0.1",
+    "luxon": "^3.6.1",
+    "moment-timezone": "^0.6.0",
+    "node-cron": "^4.2.0"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^19.8.1",
+    "@commitlint/config-conventional": "^19.8.1",
+    "husky": "^9.1.7",
+    "nodemon": "^3.1.10"
+  }
+}
