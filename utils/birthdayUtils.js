@@ -22,20 +22,28 @@ async function sendBirthdayGreeting(client, channelId) {
 
   for (const [userId, data] of Object.entries(birthdays)) {
     const userNow = DateTime.now().setZone(data.timezone);
-    const todayMonth = userNow.toFormat('MM');
-    const todayDay = userNow.toFormat('dd');
-    const nowTime = userNow.toFormat('HH:mm');
 
-    if (
-      todayMonth === data.month &&
-      todayDay === data.day &&
-      nowTime === '00:00'
-    ) {
+    const currentHour = userNow.hour;
+    const currentMinute = userNow.minute;
+
+    const isBirthday =
+      Number(userNow.month) === Number(data.month) &&
+      Number(userNow.day) === Number(data.day);
+
+    const alreadySent = data.lastSent === userNow.toISODate();
+
+    const withinMidnightWindow = currentHour === 0 && currentMinute <= 10;
+    const isFallbackTime = currentHour === 9 && currentMinute === 0;
+
+    if (isBirthday && !alreadySent && (withinMidnightWindow || isFallbackTime)) {
       try {
         const channel = await client.channels.fetch(channelId);
         if (!channel) throw new Error('Channel not found');
 
         await channel.send(`🎉 Happy Birthday, <@${userId}>! Hope your day is full of joy and yummy food! 🎂`);
+
+        data.lastSent = userNow.toISODate();
+        saveBirthdays(birthdays);
       } catch (err) {
         console.error(`❌ Failed to send birthday message to <@${userId}>:`, err.message);
       }

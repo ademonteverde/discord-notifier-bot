@@ -1,144 +1,171 @@
-// birthdayHandler.js
 const { DateTime } = require('luxon');
-const { loadBirthdays, saveBirthdays } = require('../utils/birthday.js');
+const { loadBirthdays, saveBirthdays } = require('../utils/birthdayUtils.js');
 const TIMEZONE_MAP = require('../data/timezones.json');
 
 const birthdays = loadBirthdays();
 
+// Helper to safely delete messages
+const safeDelete = async msg => {
+  if (msg?.deletable) await msg.delete().catch(() => { });
+};
+
+// /mybirthday command
 async function handleMyBirthdayCommand(message) {
   if (message.content !== '/mybirthday') return;
 
-  const userData = birthdays[message.author.id];
+  const userId = message.author.id;
+  const userData = birthdays[userId];
 
   if (!userData) {
-    return await message.channel.send(
-      `❌ <@${message.author.id}>, I don’t have your birthday saved. Please use \`/birthday\` to enter it.`
+    return message.channel.send(
+      `❌ <@${userId}>, I don’t have your birthday saved. Please use \`/birthday\` to enter it.`
     );
   }
 
   const now = DateTime.now().setZone(userData.timezone);
   let birthdayThisYear = DateTime.fromObject(
     {
+      year: now.year,
       month: parseInt(userData.month),
       day: parseInt(userData.day),
       hour: 0,
       minute: 0,
-      second: 0,
-      year: now.year
+      second: 0
     },
     { zone: userData.timezone }
   );
 
-  if (birthdayThisYear < now) {
-    birthdayThisYear = birthdayThisYear.plus({ years: 1 });
-  }
+  if (birthdayThisYear < now) birthdayThisYear = birthdayThisYear.plus({ years: 1 });
 
-  const diff = birthdayThisYear.diff(now, ['days', 'hours', 'minutes']).toObject();
+  const { days = 0, hours = 0, minutes = 0 } = birthdayThisYear.diff(now, ['days', 'hours', 'minutes']).toObject();
   const unix = Math.floor(birthdayThisYear.toSeconds());
-  const countdownText = `🎉 Your birthday is <t:${unix}:R> — that's \`${Math.floor(diff.days)}d ${Math.floor(diff.hours)}h ${Math.floor(diff.minutes)}m\` away!`;
 
   const birthdayMsg = await message.channel.send(
-    `🎂 <@${message.author.id}>, your birthday is **${userData.display}** (in \`MM/DD\` format) and your timezone is **${userData.timezone}**.\n\n${countdownText}`
+    `🎂 <@${userId}>, your birthday is **${userData.display}** (in \`MM/DD\` format) and your timezone is **${userData.timezone}**.\n\n🎉 Your birthday is <t:${unix}:R> — that's \`${Math.floor(days)}d ${Math.floor(hours)}h ${Math.floor(minutes)}m\` away!`
   );
 
   const promptMsg = await message.channel.send(
     `🗑️ Do you want me to delete this message? Reply with \`yes\` or \`no\` within **60 seconds**.`
   );
 
-  const filter = m => m.author.id === message.author.id;
+  const filter = m => m.author.id === userId;
 
   try {
-    const collected = await message.channel.awaitMessages({
-      filter,
-      max: 1,
-      time: 60000,
-      errors: ['time']
-    });
+    const collected = await message.channel.awaitMessages({ filter, max: 1, time: 60000, errors: ['time'] });
+    const reply = collected.first();
+    const response = reply.content.toLowerCase().trim();
 
-    const userReply = collected.first();
-    const responseText = userReply.content.toLowerCase().trim();
+    const deleteTriggers = ['yes', 'y', '✅'];
+    const keepTriggers = ['no', 'n'];
 
-    const deleteTriggers = ["yes", "y", "✅"];
-    const keepTriggers = ["no", "n"];
-
-    if (deleteTriggers.includes(responseText)) {
-      await birthdayMsg.delete().catch(() => {});
-      await promptMsg.delete().catch(() => {});
-      await userReply.delete().catch(() => {});
-      if (message.deletable) await message.delete().catch(() => {});
-    } else if (keepTriggers.includes(responseText)) {
+    if (deleteTriggers.includes(response)) {
+      await Promise.all([safeDelete(birthdayMsg), safeDelete(promptMsg), safeDelete(reply), safeDelete(message)]);
+    } else if (keepTriggers.includes(response)) {
       await promptMsg.edit('❎ Got it! I’ll keep the message up.');
-      await userReply.delete().catch(() => {});
+      await safeDelete(reply);
     } else {
-      await birthdayMsg.delete().catch(() => {});
-      await promptMsg.delete().catch(() => {});
-      await userReply.delete().catch(() => {});
-      if (message.deletable) await message.delete().catch(() => {});
+      await Promise.all([safeDelete(birthdayMsg), safeDelete(promptMsg), safeDelete(reply), safeDelete(message)]);
     }
   } catch {
-    await birthdayMsg.delete().catch(() => {});
+    await safeDelete(birthdayMsg);
     await promptMsg.edit('⏰ No response. I deleted the message to keep chat clean.');
   }
 }
 
+// /birthday command
 async function handleBirthdayCommand(message) {
   if (message.content !== '/birthday') return;
 
-  const filter = m => m.author.id === message.author.id;
+  const userId = message.author.id;
+  const filter = m => m.author.id === userId;
 
   try {
-    if (message.deletable) await message.delete();
+    await safeDelete(message);
 
     const prompt = await message.channel.send(
-      '📅 Please enter your **birthday and city/region** in this format: `MM/DD, CityName`\nExample: `04/20, Manila`\n_You can use a major city in the same timezone if you want more privacy._\n_(Don’t worry, I’ll auto-delete your response!)_'
+      '📅 Please enter your **birthday and city/region** in this format: `MM/DD, CityName`\nExample: `04/20, Manila`\n\n_You can use a major city in the same timezone if you want more privacy._\n_(Don’t worry, I’ll auto-delete your response!)_'
     );
 
-    const collected = await message.channel.awaitMessages({
-      filter,
-      max: 1,
-      time: 30000,
-      errors: ['time']
-    });
 
+    const collected = await message.channel.awaitMessages({ filter, max: 1, time: 30000, errors: ['time'] });
     const response = collected.first();
-    if (response.deletable) await response.delete();
-    if (prompt.deletable) await prompt.delete();
+
+    await Promise.all([safeDelete(response), safeDelete(prompt)]);
 
     const [datePart, cityInput] = response.content.split(',').map(s => s.trim());
-    const [month, day] = datePart.split('/').map(n => parseInt(n));
-    const cityName = cityInput.toLowerCase().replace(/\s+/g, '');
 
-    if (
-      !month || !day ||
-      isNaN(month) || isNaN(day) ||
-      month < 1 || month > 12 || day < 1 || day > 31 ||
-      !TIMEZONE_MAP[cityName]
-    ) {
-      return await message.channel.send(
-        `❌ Invalid input. Please use the format \`MM/DD, CityName\` and ensure the city is supported.`
+    if (!datePart || !cityInput) {
+      return message.channel.send('❌ Please enter both a date and city in the format: `MM/DD, CityName`.');
+    }
+
+    const [month, day] = datePart.split('/').map(Number);
+    const cityKey = cityInput.toLowerCase().replace(/\s+/g, '');
+
+    const isValidDate = (m, d) => DateTime.fromObject({ month: m, day: d }).isValid;
+
+    if (isNaN(month) || isNaN(day) || !isValidDate(month, day) || !TIMEZONE_MAP[cityKey]) {
+      return message.channel.send(
+        '❌ Invalid input. Please use the format `MM/DD, CityName` and ensure the city is supported.'
       );
     }
 
-    birthdays[message.author.id] = {
+    birthdays[userId] = {
       month,
       day,
-      timezone: TIMEZONE_MAP[cityName],
+      timezone: TIMEZONE_MAP[cityKey],
       display: `${month.toString().padStart(2, '0')}/${day.toString().padStart(2, '0')}`
     };
+
     saveBirthdays(birthdays);
 
-    return await message.channel.send(
-      `✅ <@${message.author.id}>, I’ve saved your birthday as \`${month}/${day}\` in the timezone \`${TIMEZONE_MAP[cityName]}\`.`
+    return message.channel.send(
+      `✅ <@${userId}>, I’ve saved your birthday and timezone.`
     );
-
   } catch {
-    return await message.channel.send(
+    return message.channel.send(
       `⌛ <@${message.author.id}>, you didn’t respond in time. Please try \`/birthday\` again when you're ready.`
     );
   }
 }
 
+// /birthdaylist command
+async function handleBirthdayListCommand(message, client) {
+  if (message.content !== '/birthdaylist') return; // ✅ Prevents auto-trigger
+
+  const logChannel = await client.channels.fetch(process.env.DISCORD_LOG_CHANNEL_ID);
+  if (!logChannel) return message.reply('❌ Could not find the log channel.');
+
+  const allBirthdays = loadBirthdays();
+  const entries = Object.entries(allBirthdays);
+
+  if (entries.length === 0) {
+    return logChannel.send('📭 No birthdays have been saved yet.');
+  }
+
+  const pages = [];
+  for (let i = 0; i < entries.length; i += 30) {
+    const chunk = entries.slice(i, i + 30)
+      .map(([userId, { display, timezone }]) => `• <@${userId}> — \`${display}\` (${timezone})`)
+      .join('\n');
+    pages.push(chunk);
+  }
+
+  for (const [i, page] of pages.entries()) {
+    await logChannel.send({
+      content: `📅 **Birthday List** ${pages.length > 1 ? `(Page ${i + 1})` : ''}`,
+      embeds: [{
+        title: 'Saved Birthdays',
+        description: page,
+        color: 0xFFB6C1
+      }]
+    });
+  }
+
+  await logChannel.send(`✅ <@${message.author.id}> posted the birthday list here.`);
+}
+
 module.exports = {
   handleBirthdayCommand,
-  handleMyBirthdayCommand
+  handleMyBirthdayCommand,
+  handleBirthdayListCommand
 };

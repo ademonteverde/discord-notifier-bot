@@ -1,14 +1,10 @@
 require('dotenv').config();
 const { Client, GatewayIntentBits, ActivityType } = require('discord.js');
 const fs = require('fs');
-
-const { handleBirthdayCommand, handleMyBirthdayCommand } = require('./handlers/birthdayHandler');
-
-
+const { handleBirthdayCommand, handleMyBirthdayCommand, handleBirthdayListCommand } = require('./handlers/birthdayHandler');
+const { checkYouTubeLive } = require('./utils/youtubeWatcher');
 const { loadTracker, saveTracker, loadMembers, saveMembers } = require('./utils/storage');
-
 const { getRandomIcebreaker, recentQuestions } = require('./utils/icebreakerUtils');
-
 const { sendWelcomeMessage } = require('./handlers/welcomeHandler');
 const { handleFirstMessageReaction } = require('./handlers/messageHandler');
 const { logError } = require('./handlers/errorHandler');
@@ -26,7 +22,7 @@ const introMessageTracker = loadTracker(INTRO_MESSAGE_FILE);
 const membersData = loadMembers();
 
 const cron = require('node-cron');
-const { sendBirthdayGreeting } = require('./utils/birthday');
+const { sendBirthdayGreeting } = require('./utils/birthdayUtils');
 
 const { loadOrInitJSON } = require('./utils/storage');
 
@@ -66,7 +62,15 @@ client.once('ready', () => {
     }],
   });
 
-  // 🗓️ Every month on the 1st at 3:00 AM
+  // 🔁 Initial live check
+  checkYouTubeLive(client, process.env.DISCORD_LIVE_NOW_CHANNEL_ID, process.env.YOUTUBE_CHANNEL_ID);
+
+  setInterval(() => {
+    console.log(`[YouTube] Checked live status at ${new Date().toLocaleTimeString()}`);
+    checkYouTubeLive(client, process.env.DISCORD_LIVE_NOW_CHANNEL_ID, process.env.YOUTUBE_CHANNEL_ID);
+  }, 10 * 60 * 1000);
+
+  // 🗓️ Monthly member save
   cron.schedule('0 3 1 * *', async () => {
     try {
       const guild = await client.guilds.fetch(process.env.DISCORD_GUILD_ID);
@@ -95,6 +99,7 @@ client.once('ready', () => {
     }
   });
 });
+
 
 client.on('guildMemberAdd', async member => {
   try {
@@ -156,15 +161,18 @@ client.on('messageCreate', async message => {
   if (message.author.bot) return;
 
   try {
+    // Always-available commands
     await handleBirthdayCommand(message);
     await handleMyBirthdayCommand(message);
+
+    // First message reaction tracker
     await handleFirstMessageReaction(
       message,
       firstMessageTracker,
       () => saveTracker(FIRST_MESSAGE_FILE, firstMessageTracker)
     );
 
-
+    // Intro channel auto-react
     if (message.channel.id === INTRO_CHANNEL_ID && !introMessageTracker.has(message.author.id)) {
       const customEmoji = message.guild.emojis.cache.get(process.env.DISCORD_FIRST_REACT_EMOJI_ID);
       if (customEmoji) await message.react(customEmoji);
@@ -172,23 +180,25 @@ client.on('messageCreate', async message => {
       saveTracker(INTRO_MESSAGE_FILE, introMessageTracker);
     }
 
-    if (message.content === '/testgreet') {
-      if (!isAdmin(message)) {
-        return message.reply('⛔ You need administrator permissions to run this.');
-      }
+    // Admin-only commands
+    const command = message.content.trim().toLowerCase();
+
+    if (command === '/testgreet') {
+      if (!isAdmin(message)) return message.reply('⛔ You need administrator permissions.');
       const logChannel = await client.channels.fetch(LOG_CHANNEL_ID);
       await sendWelcomeMessage(message.member, logChannel, getRandomIcebreaker());
-      await message.reply('✅ Test greet message sent to log channel.');
+      return message.reply('✅ Test greet message sent to log channel.');
     }
 
-    if (message.content === '/dumpmembers') {
-      if (!isAdmin(message)) {
-        return message.reply('⛔ You need administrator permissions to run this.');
-      }
+    if (command === '/birthdaylist') {
+      if (!isAdmin(message)) return message.reply('⛔ You need administrator permissions.');
+      return await handleBirthdayListCommand(message, client);
+    }
 
+    if (command === '/dumpmembers') {
+      if (!isAdmin(message)) return message.reply('⛔ You need administrator permissions.');
       await message.guild.members.fetch();
       const allMembers = {};
-
       message.guild.members.cache.forEach(member => {
         allMembers[member.id] = {
           id: member.id,
@@ -197,24 +207,25 @@ client.on('messageCreate', async message => {
           displayName: member.displayName,
           nickname: member.nickname || null,
           joinedAt: member.joinedAt ? member.joinedAt.toISOString() : null,
-          roles: member.roles.cache
-            .map(role => role.name)
-            .filter(name => name !== '@everyone')
+          roles: member.roles.cache.map(role => role.name).filter(name => name !== '@everyone')
         };
       });
-
       saveMembers(allMembers);
-      await message.reply(`✅ Saved ${Object.keys(allMembers).length} member entries to \`members.json\`.`);
+      return message.reply(`✅ Saved ${Object.keys(allMembers).length} member entries to \`members.json\`.`);
     }
 
-    if (message.content === '/testerror') {
+    if (command === '/testerror') {
       throw new Error('Intentional test error!');
+    }
+
+    if (command === '!testlive') {
+      await checkYouTubeLive(client, process.env.DISCORD_LIVE_NOW_CHANNEL_ID, process.env.YOUTUBE_CHANNEL_ID);
+      return message.reply('✅ Triggered YouTube live check.');
     }
 
   } catch (err) {
     await logError(client, `Error in messageCreate: ${err.message}`);
   }
 });
-
 
 client.login(DISCORD_TOKEN).catch(console.error);

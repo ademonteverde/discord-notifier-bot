@@ -12,6 +12,8 @@ This bot is built to bring a little more life into your community. Here’s what
 - Tracking first messages and intro posts, complete with reactions
 - Logging member data like display names, roles, and join dates
 - Admin-only test commands and error logging
+- YouTube live stream notifications
+- Data persistence via JSON files
 
 ## Features in Plain English
 
@@ -27,14 +29,16 @@ This bot is built to bring a little more life into your community. Here’s what
 - discord.js
 - node-cron
 - dotenv
-- Plain ol’ JSON files for data storage
+- JSON files for data storage
 
 ## Folder Vibes
 
-- `data/` – Where user and member data lives
-- `handlers/` – Handles commands and events
-- `utils/` – Helper functions, birthday logic, and more
 - `index.js` – The main bot script
+- `handlers/` – Handles commands and events (birthday, welcome, message tracking)
+- `utils/` – Helper functions, birthday logic, storage, and API integrations
+- `data/` – Where real user and member data lives (gitignored)
+- `data-sample/` – Sample JSON files so you know what the data should look like
+- `.env.example` – Shows you what secrets to set
 
 ## Getting Started
 
@@ -56,9 +60,12 @@ This bot is built to bring a little more life into your community. Here’s what
    DISCORD_AUTO_ROLES=role_id_1,role_id_2  
    DISCORD_FIRST_REACT_EMOJI_ID=emoji_id_here  
 
+   YOUTUBE_API_KEY=your_key_here  
+   YOUTUBE_CHANNEL_ID=your_channel_id_here  
+
 4. Run the bot:
 
-   node index.js
+   npm run start
 
 ## Setup Notes
 
@@ -67,12 +74,11 @@ This project ignores the `data/` folder and `.env` for privacy.
 To test the bot locally:
 
 1. Create a `.env` file based on `.env.example`.
-2. Use the `data-sample/` files to understand expected structure.
+2. Use the files in `data-sample/` (`birthdays.json`, `members.json`, `icebreakerStats.json`, `timezones.json`) to see what the data should look like
 3. The bot will auto-create `data/*.json` if not present.
 
 ## Notes
 
 - Make sure your bot has the necessary permissions in the Discord server.
-
 - This project is in active development and will evolve over time.
 

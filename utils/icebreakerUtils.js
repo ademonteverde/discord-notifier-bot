@@ -1,6 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-const icebreakers = require('../icebreakers');
+const icebreakers = require('../data/icebreakerData');
 
 const STATS_FILE = path.join(__dirname, '../data/icebreakerStats.json');
 
